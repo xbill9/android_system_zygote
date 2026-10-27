@@ -83,8 +83,14 @@ pub(crate) fn re_initialize(
     if let Some(cap_bound) = spawn_params.cap_bound {
         for flag in cap_bound.complement().iter() {
             let cap = Capability::try_from(flag.bits().trailing_zeros()).unwrap();
-            if cap::cap_within_bound(cap).expect("Failed to check capability bound") {
-                cap::cap_drop_bound(cap).expect("Failed to drop capability bound");
+            match cap::cap_within_bound(cap) {
+                Ok(true) => cap::cap_drop_bound(cap).expect("Failed to drop capability bound"),
+                Ok(false) => {}
+                // Kernels older than 5.9 do not know the newest capabilities and return EINVAL
+                // for them, so there is nothing to drop.
+                Err(cap::CapabilityError::GetCapBoundFailure(errno))
+                    if errno as i32 == libc::EINVAL => {}
+                Err(e) => panic!("Failed to check capability bound: {e:?}"),
             }
         }
     }
